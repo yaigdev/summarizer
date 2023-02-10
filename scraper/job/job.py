@@ -16,6 +16,8 @@ intents.message_content = True
 token = os.getenv("DISCORD_API_TOKEN")
 client = discord.Client(intents=intents)
 
+stub = modal.Stub("yaig-summarizer")
+
 def skip_channel(channel):
     if channel.name in ["introduce-yourself, twitter-handles", "Lounge"]:
             return True
@@ -74,5 +76,10 @@ async def on_ready():
     # Quit the discord bot
     sys.exit(0)
 
-if __name__ == "__main__":    
+@stub.function
+def run():
     client.run(token=token)
+
+@stub.local_entrypoint
+def main():
+    run()
