@@ -1,22 +1,18 @@
+import discord
 import os
 import sys
-import traceback
-from datetime import datetime, timedelta
-from typing import List
-
-import discord
-import libsql_client
-import modal
 from dotenv import load_dotenv
+from datetime import datetime, timedelta
 from urlextract import URLExtract
+import libsql_client
+from typing import List
+import traceback
+import modal
 
-load_dotenv()
-intents = discord.Intents.default()
-intents.message_content = True
-token = os.getenv("DISCORD_API_TOKEN")
-client = discord.Client(intents=intents)
+image = modal.Image.debian_slim()
+image = image.pip_install_from_requirements("requirements.txt")
 
-stub = modal.Stub("yaig-summarizer")
+stub = modal.Stub("yaig-summarizer", image=image)
 
 def skip_channel(channel):
     if channel.name in ["introduce-yourself, twitter-handles", "Lounge"]:
@@ -28,18 +24,17 @@ def skip_channel(channel):
 
     return False
 
-async def write_messages(url, messages: List[discord.Message]):
-    stmt = "INSERT INTO messages VALUES(?, ?, ?, ?, ?)"
+async def write_messages(client, url, messages: List[discord.Message]):
+    stmt = "INSERT OR IGNORE INTO messages VALUES(?, ?, ?, ?)"
     async with libsql_client.Client(url) as client:
         stmts = []
         for message in messages:
-            stmt_obj = (stmt, (int(message.id), message.content, message.author.name, "", int(message.created_at.timestamp())))
-            print(stmt_obj)
+            stmt_obj = (stmt, (message.id, message.content, message.author.name, message.created_at.timestamp()))
             stmts.append(stmt_obj)
 
         await client.batch(stmts)
 
-async def store_interesting_messages():
+async def scrape_messages(client, libsql_url: str):
     channels = client.get_all_channels()
     yesterday = datetime.today() - timedelta(days=1)
     extractor = URLExtract()
@@ -49,7 +44,7 @@ async def store_interesting_messages():
         if skip_channel(channel):
             continue
 
-        channel_obj = client.get_channel(channel.id)        
+        channel_obj = client.get_channel(channel.id)
         try:
             async for message in channel_obj.history(after=yesterday):
                 urls = extractor.find_urls(message.content)
@@ -61,25 +56,32 @@ async def store_interesting_messages():
             continue
 
     print(f"Writing {len(messages)} messages to sql...")
-    await write_messages(os.getenv("LIBSQL_URL"), messages)
+    await write_messages(client, libsql_url, messages)
     print(f"Finished writing messages")
 
-
-@client.event
-async def on_ready():
-    try:
-        await store_interesting_messages()
-    except Exception as e:
-        traceback.print_exc()
-        sys.exit(1)
-
-    # Quit the discord bot
-    sys.exit(0)
-
-@stub.function
+@stub.function(
+    secret=modal.Secret.from_name("summarizer")
+)
 def run():
+    load_dotenv()
+    intents = discord.Intents.default()
+    intents.message_content = True
+    token = os.getenv("DISCORD_API_TOKEN")
+    libsql_url = os.getenv("LIBSQL_URL")
+    client = discord.Client(intents=intents)
+
+    @client.event
+    async def on_ready():
+        try:
+            await scrape_messages(client, libsql_url)
+        except Exception as e:
+            traceback.print_exc()
+            sys.exit(1)
+
+        await client.close()
+
     client.run(token=token)
 
-@stub.local_entrypoint
-def main():
-    run()
+if __name__ == "__main__":
+    with stub.run():
+        run()
