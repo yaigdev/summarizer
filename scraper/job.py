@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from urlextract import URLExtract
 import libsql_client
 from typing import List
+from dataclasses import dataclass
 import traceback
 import modal
 
@@ -24,12 +25,18 @@ def skip_channel(channel):
 
     return False
 
+def count_reactions(message: discord.Message):
+    count = 0
+    for r in message.reactions:
+        count += r.count
+    return count
+
 async def write_messages(client, url, messages: List[discord.Message]):
-    stmt = "INSERT OR IGNORE INTO messages VALUES(?, ?, ?, ?)"
+    stmt = "INSERT OR IGNORE INTO messages VALUES(?, ?, ?, ?, ?, ?)"
     async with libsql_client.Client(url) as client:
         stmts = []
         for message in messages:
-            stmt_obj = (stmt, (message.id, message.content, message.author.name, message.created_at.timestamp()))
+            stmt_obj = (stmt, (message.id, message.content, message.channel.name, message.author.name, count_reactions(message), message.created_at.timestamp()))
             stmts.append(stmt_obj)
 
         await client.batch(stmts)
