@@ -67,7 +67,8 @@ async def scrape_messages(client, libsql_url: str):
     print(f"Finished writing messages")
 
 @stub.function(
-    secret=modal.Secret.from_name("summarizer")
+    secret=modal.Secret.from_name("summarizer"),
+    schedule=modal.Period(days=1)
 )
 def run():
     load_dotenv()
