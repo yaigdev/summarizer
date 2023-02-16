@@ -36,7 +36,7 @@ async def write_messages(client, url, messages: List[discord.Message]):
     async with libsql_client.Client(url) as client:
         stmts = []
         for message in messages:
-            stmt_obj = (stmt, (message.id, message.content, message.channel.name, message.author.name, count_reactions(message), message.created_at.timestamp()))
+            stmt_obj = (stmt, (message.id, message.content, message.author.name, message.channel.name, count_reactions(message), message.created_at.timestamp()))
             stmts.append(stmt_obj)
 
         await client.batch(stmts)
