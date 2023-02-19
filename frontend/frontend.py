@@ -4,7 +4,7 @@ import libsql_client
 import pandas as pd
 import asyncio
 import string
-from datetime import datetime
+from datetime import datetime, timedelta
 
 icon_design = {
     "actor": {
@@ -90,11 +90,12 @@ def generate_html_timeline(items):
     return timeline_parent_html
 
 
-async def get_data(url):
+async def generate_view(url):
     async with libsql_client.Client(url) as client:
-        data = await client.execute("SELECT * FROM messages ORDER BY created_at DESC LIMIT 100")
-        #df = pd.DataFrame.from_records(data=data.rows, columns=data.columns)
-        #data.rows
+        t = int((datetime.now() - timedelta(days = 3)).timestamp())
+        stmt = f"SELECT * FROM messages WHERE created_at >= {str(t)} ORDER BY created_at DESC"
+        print(stmt)
+        data = await client.execute(stmt)
 
     items = []
     for row in data.rows:
@@ -108,12 +109,18 @@ async def get_data(url):
             }
         )
 
-
     html_timeline = dp.HTML(generate_html_timeline(items))
-    app = dp.App(html_timeline)
-    app.upload(name="YAIG summary", description="latest hot messages in YAIG", open=True)
+    return dp.View(html_timeline)
 
+
+def get_messages_view():
+    url = os.getenv("LIBSQL_URL")
+    view = asyncio.run(generate_view(url))
+    v = dp.View(
+        dp.Text("# Latest YAIG hot messages"),
+        view
+    )
+    return v
 
 if __name__ == "__main__":
-    url = os.getenv("LIBSQL_URL")
-    asyncio.run(get_data(url))
+    dp.serve(get_messages_view)
