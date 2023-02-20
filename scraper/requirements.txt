@@ -3,3 +3,4 @@ python-dotenv==0.21.1
 urlextract==1.8.0
 libsql-client==0.1.2
 modal-client==0.45.1163
+dataclasses-json==0.5.7

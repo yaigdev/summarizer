@@ -5,6 +5,15 @@ import pandas as pd
 import asyncio
 import string
 from datetime import datetime, timedelta
+from dataclasses import dataclass
+from dataclasses_json import DataClassJsonMixin
+from typing import List
+
+@dataclass
+class YAIGAttachments(DataClassJsonMixin):
+    urls: List[str]
+
+img_token = "[:attachments]"
 
 icon_design = {
     "actor": {
@@ -74,13 +83,21 @@ def generate_html_timeline(items):
     timeline_children_html = ""
 
     for item in items:
+        description = item.get("description", "")
+        if description.startswith(img_token):
+            description = description[len(img_token):]
+            ya = YAIGAttachments.from_json(description)
+            description = ""
+            for url in ya.urls:
+                description += f"<img src={url} />"
+
         timeline_children_html += template_timeline_children_html.safe_substitute(
             color=icon_design[item.get("icon", "actor")]["color"],
             icon=icon_design[item.get("icon", "actor")]["icon"],
             time=item.get("time", ""),
             action=item.get("action", ""),
             name=item.get("name", ""),
-            description=item.get("description", ""),
+            description=description,
         )
 
     timeline_parent_html = template_timeline_parent_html.safe_substitute(
@@ -94,7 +111,6 @@ async def generate_view(url):
     async with libsql_client.Client(url) as client:
         t = int((datetime.now() - timedelta(days = 3)).timestamp())
         stmt = f"SELECT * FROM messages WHERE created_at >= {str(t)} ORDER BY created_at DESC"
-        print(stmt)
         data = await client.execute(stmt)
 
     items = []

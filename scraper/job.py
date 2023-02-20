@@ -7,6 +7,7 @@ from urlextract import URLExtract
 import libsql_client
 from typing import List
 from dataclasses import dataclass
+from dataclasses_json import DataClassJsonMixin
 import traceback
 import modal
 
@@ -31,19 +32,31 @@ def count_reactions(message: discord.Message):
         count += r.count
     return count
 
+@dataclass
+class YAIGAttachments(DataClassJsonMixin):
+    urls: List[str]
+
 async def write_messages(client, url, messages: List[discord.Message]):
     stmt = "INSERT OR IGNORE INTO messages VALUES(?, ?, ?, ?, ?, ?)"
     async with libsql_client.Client(url) as client:
         stmts = []
         for message in messages:
-            stmt_obj = (stmt, (message.id, message.content, message.author.name, message.channel.name, count_reactions(message), message.created_at.timestamp()))
+            content = message.content
+            if len(message.attachments) > 0:
+                urls = []
+                for attachment in message.attachments:
+                    urls.append(attachment.url)
+                print(urls)
+                content = "[:attachments]" + YAIGAttachments(urls).to_json()
+
+            stmt_obj = (stmt, (message.id, content, message.author.name, message.channel.name, count_reactions(message), message.created_at.timestamp()))
             stmts.append(stmt_obj)
 
         await client.batch(stmts)
 
 async def scrape_messages(client, libsql_url: str):
     channels = client.get_all_channels()
-    yesterday = datetime.today() - timedelta(days=1)
+    yesterday = datetime.today() - timedelta(days=5)
     extractor = URLExtract()
     messages = []
     print("Looping through channels...")
