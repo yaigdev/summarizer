@@ -1,13 +1,13 @@
 import os
 import datapane as dp
 import libsql_client
-import pandas as pd
 import asyncio
 import string
 from datetime import datetime, timedelta
 from dataclasses import dataclass
 from dataclasses_json import DataClassJsonMixin
 from typing import List
+from urlextract import URLExtract
 
 @dataclass
 class YAIGAttachments(DataClassJsonMixin):
@@ -82,14 +82,21 @@ template_timeline_parent_html = string.Template(
 def generate_html_timeline(items):
     timeline_children_html = ""
 
+    extractor = URLExtract()
     for item in items:
         description = item.get("description", "")
+        urls = extractor.find_urls(description, with_schema_only=True)
         if description.startswith(img_token):
             description = description[len(img_token):]
             ya = YAIGAttachments.from_json(description)
             description = ""
             for url in ya.urls:
+                # Replace imgs with embedded HTML images.
                 description += f"<img src={url} />"
+        elif len(urls) > 0:
+            for url in urls:
+                # Replace links with html links.
+                description = description.replace(url, f"<a style='color:#33348e' target='_blank' href={url}>{url}</a>")
 
         timeline_children_html += template_timeline_children_html.safe_substitute(
             color=icon_design[item.get("icon", "actor")]["color"],
@@ -107,7 +114,7 @@ def generate_html_timeline(items):
     return timeline_parent_html
 
 
-async def generate_view(url):
+async def generate_view(url) -> dp.View:
     async with libsql_client.Client(url) as client:
         t = int((datetime.now() - timedelta(days = 3)).timestamp())
         stmt = f"SELECT * FROM messages WHERE created_at >= {str(t)} ORDER BY created_at DESC"
@@ -125,18 +132,19 @@ async def generate_view(url):
             }
         )
 
-    html_timeline = dp.HTML(generate_html_timeline(items))
+    html = generate_html_timeline(items)
+    html_timeline = dp.HTML(html=html)
     return dp.View(html_timeline)
 
 
 def get_messages_view():
     url = os.getenv("LIBSQL_URL")
     view = asyncio.run(generate_view(url))
-    v = dp.View(
-        dp.Text("# Latest YAIG hot messages"),
-        view
-    )
+    v = [
+      dp.Text("# Latest YAIG hot messages"),
+      view
+    ]
     return v
 
 if __name__ == "__main__":
-    dp.serve(get_messages_view)
+    dp.serve_app(dp.Dynamic(on_load=get_messages_view))
