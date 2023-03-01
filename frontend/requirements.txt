@@ -1,4 +1,4 @@
-datapane==0.16.0
+datapane==0.16.1
 pandas==1.5.3
 libsql-client==0.1.2
 dataclasses-json==0.5.7
